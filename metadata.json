@@ -1,0 +1,8 @@
+{
+  "name": "Aura: Your AI Journal",
+  "description": "A mental health journaling app that uses AI to provide personalized prompts, insights, and a conversational journaling experience. Built with Gemini, it helps you understand your thoughts and feelings through reflection and conversation.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
