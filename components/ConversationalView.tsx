@@ -1,7 +1,8 @@
+
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { LiveSession, LiveServerMessage, Modality, Blob } from '@google/genai';
-import { getAuraAI, summarizeConversationForJournal } from '../services/geminiService';
-import { Mood } from '../types';
+import { getAuraAI, summarizeConversationForJournal, getConversationalSystemInstruction } from '../services/geminiService';
+import { Mood, JournalEntry, TranscriptEntry, ConversationHistoryItem } from '../types';
 import { MicIcon, StopIcon, SaveIcon, ClockIcon } from './Icons';
 import LoadingSpinner from './LoadingSpinner';
 
@@ -44,29 +45,19 @@ const decodeAudioData = async (
   return buffer;
 };
 
-interface TranscriptEntry {
-  id: string;
-  speaker: 'user' | 'aura';
-  text: string;
-}
-
-interface ConversationHistoryItem {
-    id: string;
-    date: string;
-    transcript: TranscriptEntry[];
-}
-
 interface ConversationalViewProps {
-    saveJournalEntry: (content: string, mood: Mood) => void;
+    saveJournalEntry: (content: string, mood: Mood, detailedMood?: string, type?: 'text' | 'conversation') => void;
+    contextualEntry?: JournalEntry | null;
+    conversationHistory: ConversationHistoryItem[];
+    saveConversationHistory: (transcript: TranscriptEntry[]) => void;
 }
 
-const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntry }) => {
+const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntry, contextualEntry, conversationHistory, saveConversationHistory }) => {
   const [isSessionActive, setIsSessionActive] = useState(false);
   const [status, setStatus] = useState<'idle' | 'listening' | 'speaking' | 'connecting' | 'error'>('idle');
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
-  const [conversationHistory, setConversationHistory] = useState<ConversationHistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
 
@@ -80,39 +71,13 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
   const currentOutputTranscriptionRef = useRef('');
   const nextStartTimeRef = useRef(0);
   const audioSourcesRef = useRef(new Set<AudioBufferSourceNode>());
+  
+  // Use a ref to hold the toggleConversation function to avoid dependency issues in useEffect
+  const toggleConversationRef = useRef<() => Promise<void>>();
 
-  useEffect(() => {
-    try {
-        const savedHistoryRaw = localStorage.getItem('conversationHistory');
-        if (savedHistoryRaw) {
-            setConversationHistory(JSON.parse(savedHistoryRaw));
-        }
-    } catch (e) { console.error("Failed to load conversation history", e); }
-  }, []);
-
-  const saveTranscriptToHistory = (transcriptToSave: TranscriptEntry[]) => {
-    if (transcriptToSave.length === 0) return;
-    try {
-        const newConversation: ConversationHistoryItem = {
-            id: new Date().toISOString(),
-            date: new Date().toLocaleString('en-US', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            }),
-            transcript: transcriptToSave,
-        };
-        
-        setConversationHistory(prevHistory => {
-            const updatedHistory = [newConversation, ...prevHistory];
-            if (updatedHistory.length > 20) updatedHistory.splice(20); // Cap history at 20 entries
-            localStorage.setItem('conversationHistory', JSON.stringify(updatedHistory));
-            return updatedHistory;
-        });
-    } catch (error) {
-        console.error("Failed to save conversation history:", error);
+  const handleEndConversation = (transcriptToSave: TranscriptEntry[]) => {
+    if (transcriptToSave.length > 0) {
+      saveConversationHistory(transcriptToSave);
     }
   };
 
@@ -132,7 +97,7 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
     scriptProcessorRef.current?.disconnect();
     scriptProcessorRef.current = null;
   }, []);
-  
+
   useEffect(() => {
     return () => cleanup();
   }, [cleanup]);
@@ -144,7 +109,7 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
     try {
         const result = await summarizeConversationForJournal(fullTranscript);
         if (result) {
-            saveJournalEntry(result.content, result.mood);
+            saveJournalEntry(result.content, result.mood, result.detailedMood, 'conversation');
             setTranscript([]); // Clear transcript after saving
         }
     } catch(e) {
@@ -156,17 +121,28 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
 
   const toggleConversation = async () => {
     if (isSessionActive) {
-      saveTranscriptToHistory(transcript);
+      handleEndConversation(transcript);
       cleanup();
       setIsSessionActive(false);
       setStatus('idle');
       return;
     }
 
-    setTranscript([]);
     setIsHistoryOpen(false);
     setStatus('connecting');
     setErrorMessage('');
+
+    // Pre-populate transcript if there's a contextual entry
+    if (contextualEntry) {
+        const userMessage: TranscriptEntry = {
+            id: `context-user-${Date.now()}`,
+            speaker: 'user',
+            text: contextualEntry.content
+        };
+        setTranscript([userMessage]);
+    } else {
+        setTranscript([]);
+    }
     
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -175,13 +151,14 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
       const ai = getAuraAI();
       const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       outputAudioContextRef.current = outputAudioContext;
+      const systemInstruction = getConversationalSystemInstruction(contextualEntry);
 
       sessionPromiseRef.current = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
         config: {
             responseModalities: [Modality.AUDIO],
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' }}},
-            systemInstruction: 'You are Aura, a soothing, empathetic mental health journal. Speak in a soft, calming female voice. Use principles of Cognitive Behavioral Therapy and the Wheel of Emotions to guide the user through their thoughts and feelings. Keep your responses concise, supportive and conversational.',
+            systemInstruction,
             inputAudioTranscription: {},
             outputAudioTranscription: {}
         },
@@ -189,6 +166,24 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
           onopen: () => {
             const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
             audioContextRef.current = inputAudioContext;
+
+            // If there is a contextual entry, send a silent packet to kick off the conversation
+            if (contextualEntry && sessionPromiseRef.current) {
+                sessionPromiseRef.current.then((session) => {
+                    // Create a short silent audio packet
+                    const silentData = new Float32Array(1024).fill(0);
+                    const l = silentData.length;
+                    const int16 = new Int16Array(l);
+                    for (let i = 0; i < l; i++) {
+                        int16[i] = silentData[i] * 32768;
+                    }
+                    const pcmBlob: Blob = {
+                        data: encode(new Uint8Array(int16.buffer)),
+                        mimeType: 'audio/pcm;rate=16000',
+                    };
+                    session.sendRealtimeInput({ media: pcmBlob });
+                });
+            }
 
             const source = inputAudioContext.createMediaStreamSource(stream);
             const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
@@ -228,8 +223,12 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
                   const auraResponse = currentOutputTranscriptionRef.current.trim();
                   setTranscript(prev => {
                       const newHistory: TranscriptEntry[] = [...prev];
-                      if(userInput) newHistory.push({id: `user-${Date.now()}`, speaker: 'user', text: userInput});
-                      if(auraResponse) newHistory.push({id: `aura-${Date.now()}`, speaker: 'aura', text: auraResponse});
+                      if(userInput) {
+                        newHistory.push({id: `user-${Date.now()}`, speaker: 'user', text: userInput});
+                      }
+                      if(auraResponse) {
+                        newHistory.push({id: `aura-${Date.now()}`, speaker: 'aura', text: auraResponse});
+                      }
                       return newHistory;
                   });
                   currentInputTranscriptionRef.current = '';
@@ -289,6 +288,17 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
     }
   };
 
+  // Assign the function to the ref after it's defined.
+  toggleConversationRef.current = toggleConversation;
+
+  useEffect(() => {
+    // Automatically start the conversation if a contextual entry is provided.
+    if (contextualEntry && !isSessionActive && status === 'idle' && toggleConversationRef.current) {
+      toggleConversationRef.current();
+    }
+  }, [contextualEntry, isSessionActive, status]);
+
+
   const viewHistoryEntry = (entry: ConversationHistoryItem) => {
     setTranscript(entry.transcript);
     setIsHistoryOpen(false);
@@ -329,6 +339,13 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
       </div>
       <p className="text-slate-400 mb-4">Have a conversation with Aura. When you're done, the transcript will be saved to your history.</p>
       
+      {contextualEntry && !isSessionActive && (
+          <div className="mb-4 p-3 bg-slate-900/70 border-l-4 border-cyan-500 rounded-r-lg animate-fade-in">
+              <p className="text-slate-300 font-semibold">Focusing on your entry from: <span className="text-cyan-400">{contextualEntry.date}</span></p>
+              <p className="text-slate-400 italic mt-1 text-sm">"{contextualEntry.content.substring(0, 150)}{contextualEntry.content.length > 150 ? '...' : ''}"</p>
+          </div>
+      )}
+
       <div className="flex-grow bg-slate-900/70 rounded-lg overflow-hidden border border-slate-700 mb-4 flex">
         {isHistoryOpen ? (
             <div className="w-full p-4 overflow-y-auto">
@@ -343,7 +360,7 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
                                     onClick={() => viewHistoryEntry(entry)}
                                     className="w-full text-left p-3 bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors duration-200"
                                 >
-                                    <p className="font-semibold text-cyan-400">{entry.date}</p>
+                                    <p className="font-semibold text-cyan-400">{new Date(entry.date).toLocaleString()}</p>
                                     <p className="text-sm text-slate-400 truncate">{entry.transcript.map(t => t.text).join(' ')}</p>
                                 </button>
                             </li>

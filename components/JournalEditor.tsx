@@ -1,11 +1,13 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import { generatePrompt, getAuraAI } from '../services/geminiService';
-import { JournalEntry, Mood, GeneratedPrompt } from '../types';
+import { JournalEntry, Mood, GeneratedPrompt, ConversationHistoryItem } from '../types';
+import { moodStyles } from '../data/emotionsData';
 import LoadingSpinner from './LoadingSpinner';
 import TextToSpeechButton from './TextToSpeechButton';
+import EmotionWheel from './EmotionWheel';
 import { SparklesIcon, MicIcon, StopIcon } from './Icons';
-import { LiveSession, LiveServerMessage, Blob } from '@google/genai';
+import { LiveSession, LiveServerMessage, Blob, Modality } from '@google/genai';
 
 // Helper function for audio encoding
 const encode = (bytes: Uint8Array): string => {
@@ -18,32 +20,24 @@ const encode = (bytes: Uint8Array): string => {
 };
 
 interface JournalEditorProps {
-  saveEntry: (content: string, mood: Mood) => void;
+  saveEntry: (content: string, mood: Mood, detailedMood?: string, type?: 'text' | 'conversation') => void;
   pastEntries: JournalEntry[];
+  conversationHistory: ConversationHistoryItem[];
 }
 
-const moods: Mood[] = ['Joy', 'Sadness', 'Anger', 'Fear', 'Calm'];
-const moodStyles: Record<Mood, { base: string; selected: string; emoji: string }> = {
-    Joy: { base: 'border-yellow-500/50 text-yellow-300 hover:bg-yellow-500/20', selected: 'bg-yellow-500/30 border-yellow-400 text-yellow-200', emoji: '😊' },
-    Sadness: { base: 'border-blue-500/50 text-blue-300 hover:bg-blue-500/20', selected: 'bg-blue-500/30 border-blue-400 text-blue-200', emoji: '😢' },
-    Anger: { base: 'border-red-500/50 text-red-300 hover:bg-red-500/20', selected: 'bg-red-500/30 border-red-400 text-red-200', emoji: '😠' },
-    Fear: { base: 'border-purple-500/50 text-purple-300 hover:bg-purple-500/20', selected: 'bg-purple-500/30 border-purple-400 text-purple-200', emoji: '😨' },
-    Calm: { base: 'border-green-500/50 text-green-300 hover:bg-green-500/20', selected: 'bg-green-500/30 border-green-400 text-green-200', emoji: '😌' },
-};
-
-const JournalEditor: React.FC<JournalEditorProps> = ({ saveEntry, pastEntries }) => {
+const JournalEditor: React.FC<JournalEditorProps> = ({ saveEntry, pastEntries, conversationHistory }) => {
   const [content, setContent] = useState('');
   const [selectedMood, setSelectedMood] = useState<Mood | null>(null);
+  const [detailedMood, setDetailedMood] = useState<string | null>(null);
   const [isLoadingPrompt, setIsLoadingPrompt] = useState(false);
   const [generatedPrompt, setGeneratedPrompt] = useState<GeneratedPrompt | null>(null);
   const [isRecording, setIsRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-
+  const [isEmotionWheelOpen, setIsEmotionWheelOpen] = useState(false);
+  
   const sessionPromiseRef = useRef<Promise<LiveSession> | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const transcriptionRef = useRef('');
 
   const cleanupRecording = useCallback(() => {
     if (sessionPromiseRef.current) {
@@ -65,9 +59,7 @@ const JournalEditor: React.FC<JournalEditorProps> = ({ saveEntry, pastEntries })
   const startRecording = async () => {
     if (isRecording) return;
     setIsRecording(true);
-    setIsTranscribing(true);
-    transcriptionRef.current = '';
-
+    
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaStreamRef.current = stream;
@@ -75,7 +67,10 @@ const JournalEditor: React.FC<JournalEditorProps> = ({ saveEntry, pastEntries })
 
         sessionPromiseRef.current = ai.live.connect({
             model: 'gemini-2.5-flash-native-audio-preview-09-2025',
-            config: { inputAudioTranscription: {} },
+            config: { 
+                inputAudioTranscription: {},
+                responseModalities: [Modality.AUDIO] 
+            },
             callbacks: {
                 onopen: () => {
                     const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -101,7 +96,6 @@ const JournalEditor: React.FC<JournalEditorProps> = ({ saveEntry, pastEntries })
                 onmessage: (message: LiveServerMessage) => {
                     if (message.serverContent?.inputTranscription) {
                         const newText = message.serverContent.inputTranscription.text;
-                        transcriptionRef.current += newText;
                         setContent(prev => prev + newText);
                     }
                 },
@@ -112,22 +106,21 @@ const JournalEditor: React.FC<JournalEditorProps> = ({ saveEntry, pastEntries })
     } catch (err) {
         console.error("Failed to start recording:", err);
         setIsRecording(false);
-        setIsTranscribing(false);
     }
   };
 
   const stopRecording = () => {
     cleanupRecording();
     setIsRecording(false);
-    setIsTranscribing(false);
   };
 
 
   const handleSave = () => {
     if (content.trim() && selectedMood) {
-      saveEntry(content, selectedMood);
+      saveEntry(content, selectedMood, detailedMood ?? undefined);
       setContent('');
       setSelectedMood(null);
+      setDetailedMood(null);
       setGeneratedPrompt(null);
     }
   };
@@ -136,7 +129,8 @@ const JournalEditor: React.FC<JournalEditorProps> = ({ saveEntry, pastEntries })
     setIsLoadingPrompt(true);
     setGeneratedPrompt(null);
     try {
-      const promptData = await generatePrompt(pastEntries, 'cbt');
+      const moodPayload = selectedMood ? { core: selectedMood, detailed: detailedMood || undefined } : undefined;
+      const promptData = await generatePrompt(pastEntries, conversationHistory, moodPayload);
       setGeneratedPrompt(promptData);
     } catch (error) {
       console.error("Failed to fetch prompt", error);
@@ -144,105 +138,97 @@ const JournalEditor: React.FC<JournalEditorProps> = ({ saveEntry, pastEntries })
       setIsLoadingPrompt(false);
     }
   };
-  
-  const fetchWritersBlockPrompt = async () => {
-    setIsLoadingPrompt(true);
-    setGeneratedPrompt(null);
-    try {
-      const promptData = await generatePrompt(pastEntries, 'writers_block');
-      setGeneratedPrompt(promptData);
-    } catch (error) {
-      console.error("Failed to fetch writer's block prompt", error);
-    } finally {
-      setIsLoadingPrompt(false);
-    }
+
+  const handleSelectEmotion = (core: Mood, detailed: string) => {
+    setSelectedMood(core);
+    setDetailedMood(detailed);
+    setIsEmotionWheelOpen(false);
   };
 
+  const selectedMoodStyle = selectedMood ? moodStyles[selectedMood] : null;
+  const emotionButtonClasses = selectedMoodStyle
+    ? `${selectedMoodStyle.selected} w-full justify-center`
+    : `${moodStyles.Bad.base} w-full justify-center opacity-70`;
+
+
   return (
-    <div className="flex flex-col bg-slate-800/50 rounded-lg p-6 shadow-lg lg:h-full">
-      <h2 className="text-2xl font-bold text-white mb-4">New Entry</h2>
-      
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-slate-300 mb-2">How are you feeling today?</label>
-        <div className="flex flex-wrap gap-2">
-            {moods.map(mood => {
-                const style = moodStyles[mood];
-                return (
-                    <button 
-                        key={mood}
-                        onClick={() => setSelectedMood(mood)}
-                        className={`px-3 py-2 text-sm rounded-lg border-2 font-medium transition-colors duration-200 ${selectedMood === mood ? style.selected : style.base}`}
-                    >
-                       {style.emoji} {mood}
-                    </button>
-                )
-            })}
-        </div>
-      </div>
-
-      {generatedPrompt && (
-        <div className="mb-4 p-4 bg-slate-900/70 border-l-4 border-cyan-500 rounded-r-lg flex justify-between items-center animate-fade-in">
-          <p className="text-slate-300 italic">{generatedPrompt.prompt}</p>
-          <TextToSpeechButton textToSpeak={generatedPrompt.prompt} />
-        </div>
-      )}
-
-      <textarea
-        className="flex-grow w-full bg-slate-900/70 border-2 border-slate-700 rounded-lg p-4 text-slate-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors duration-200 resize-none"
-        placeholder="What's on your mind? Or, use the mic to speak your entry."
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
+    <>
+      <EmotionWheel 
+        isOpen={isEmotionWheelOpen}
+        onClose={() => setIsEmotionWheelOpen(false)}
+        onSelect={handleSelectEmotion}
       />
-
-      <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-3">
-        <div className="w-full sm:w-auto text-center sm:text-left">
-            <button
-              onClick={fetchPrompt}
-              disabled={isLoadingPrompt || isRecording}
-              className="w-full sm:w-auto flex items-center justify-center px-4 py-2 bg-slate-700 text-cyan-300 rounded-lg hover:bg-slate-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoadingPrompt ? (
-                <LoadingSpinner className="w-5 h-5 mr-2" />
-              ) : (
-                <SparklesIcon className="w-5 h-5 mr-2" />
-              )}
-              Get a Prompt
-            </button>
-            <button 
-                onClick={fetchWritersBlockPrompt}
-                disabled={isLoadingPrompt || isRecording}
-                className="text-xs text-slate-400 hover:text-cyan-400 transition-colors duration-200 mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                Feeling Stuck?
-            </button>
+      <div className="flex flex-col bg-slate-800/50 rounded-lg p-6 shadow-lg lg:h-full">
+        <h2 className="text-2xl font-bold text-white mb-4">New Entry</h2>
+        
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-300 mb-2">How are you feeling today?</label>
+          <button
+            onClick={() => setIsEmotionWheelOpen(true)}
+            className={`flex items-center px-4 py-3 text-base rounded-lg border-2 font-medium transition-colors duration-200 ${emotionButtonClasses}`}
+          >
+            {selectedMoodStyle?.emoji} 
+            <span className="ml-2">{detailedMood || 'Select how you feel'}</span>
+          </button>
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-              onClick={isRecording ? stopRecording : startRecording}
-              className={`flex items-center justify-center p-2 rounded-lg transition-colors duration-200 flex-1 sm:flex-none sm:w-28 ${isRecording ? 'bg-red-500/80 hover:bg-red-500' : 'bg-slate-700 hover:bg-slate-600'}`}
-          >
-              {isRecording ? (
-                  <>
-                      <StopIcon className="w-5 h-5 mr-2 text-white" />
-                      <span className="text-white">Stop</span>
-                  </>
-              ) : (
-                   <>
-                      <MicIcon className="w-5 h-5 mr-2 text-cyan-300" />
-                      <span className="text-cyan-300">Record</span>
-                   </>
-              )}
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={!content.trim() || !selectedMood || isRecording}
-            className="px-6 py-2 bg-cyan-600 text-white font-semibold rounded-lg hover:bg-cyan-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-none"
-          >
-            Save Entry
-          </button>
+
+        {generatedPrompt && (
+          <div className="mb-4 p-4 bg-slate-900/70 border-l-4 border-cyan-500 rounded-r-lg flex justify-between items-center animate-fade-in">
+            <p className="text-slate-300 italic">{generatedPrompt.prompt}</p>
+            <TextToSpeechButton textToSpeak={generatedPrompt.prompt} />
+          </div>
+        )}
+
+        <textarea
+          className="flex-grow w-full bg-slate-900/70 border-2 border-slate-700 rounded-lg p-4 text-slate-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-colors duration-200 resize-none"
+          placeholder="What's on your mind? Or, use the mic to speak your entry."
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+        />
+
+        <div className="flex flex-col sm:flex-row justify-between items-center mt-4 gap-3">
+          <div className="w-full sm:w-auto">
+              <button
+                onClick={fetchPrompt}
+                disabled={isLoadingPrompt || isRecording}
+                className="w-full sm:w-auto flex items-center justify-center px-4 py-2 bg-slate-700 text-cyan-300 rounded-lg hover:bg-slate-600 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoadingPrompt ? (
+                  <LoadingSpinner className="w-5 h-5 mr-2" />
+                ) : (
+                  <SparklesIcon className="w-5 h-5 mr-2" />
+                )}
+                Get a Prompt
+              </button>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+                onClick={isRecording ? stopRecording : startRecording}
+                className={`flex items-center justify-center p-2 rounded-lg transition-colors duration-200 flex-1 sm:flex-none sm:w-28 ${isRecording ? 'bg-red-500/80 hover:bg-red-500' : 'bg-slate-700 hover:bg-slate-600'}`}
+            >
+                {isRecording ? (
+                    <>
+                        <StopIcon className="w-5 h-5 mr-2 text-white" />
+                        <span className="text-white">Stop</span>
+                    </>
+                ) : (
+                    <>
+                        <MicIcon className="w-5 h-5 mr-2 text-cyan-300" />
+                        <span className="text-cyan-300">Record</span>
+                    </>
+                )}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!content.trim() || !selectedMood || isRecording}
+              className="px-6 py-2 bg-cyan-600 text-white font-semibold rounded-lg hover:bg-cyan-500 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex-1 sm:flex-none"
+            >
+              Save Entry
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

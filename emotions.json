@@ -1,0 +1,57 @@
+{
+  "Happy": {
+    "Playful": ["Aroused", "Cheeky"],
+    "Content": ["Free", "Joyful"],
+    "Interested": ["Curious", "Inquisitive"],
+    "Proud": ["Successful", "Confident"],
+    "Accepted": ["Respected", "Valued"],
+    "Powerful": ["Courageous", "Creative"],
+    "Peaceful": ["Loving", "Thankful"],
+    "Trusting": ["Sensitive", "Intimate"],
+    "Optimistic": ["Hopeful", "Inspired"]
+  },
+  "Surprised": {
+    "Startled": ["Shocked", "Dismayed"],
+    "Confused": ["Disillusioned", "Perplexed"],
+    "Amazed": ["Astonished", "Awe"],
+    "Excited": ["Eager", "Energetic"]
+  },
+  "Bad": {
+    "Bored": ["Indifferent", "Apathetic"],
+    "Busy": ["Pressured", "Rushed"],
+    "Stressed": ["Overwhelmed", "Out_of_Control"],
+    "Tired": ["Unfocussed", "Sleepy"]
+  },
+  "Fearful": {
+    "Scared": ["Helpless", "Frightened"],
+    "Anxious": ["Overwhelmed", "Worried"],
+    "Insecure": ["Inadequate", "Inferior"],
+    "Weak": ["Worthless", "Insignificant"],
+    "Rejected": ["Excluded", "Persecuted"],
+    "Threatened": ["Nervous", "Exposed"]
+  },
+  "Angry": {
+    "Let_down": ["Betrayed", "Resentful"],
+    "Humiliated": ["Disrespected", "Ridiculed"],
+    "Bitter": ["Indignant", "Violated"],
+    "Mad": ["Furious", "Jealous"],
+    "Aggressive": ["Provoked", "Hostile"],
+    "Frustrated": ["Infuriated", "Annoyed"],
+    "Distant": ["Withdrawn", "Numb"],
+    "Critical": ["Skeptical", "Dismissive"]
+  },
+  "Disgusted": {
+    "Disapproving": ["Judgemental", "Embarrassed"],
+    "Disappointed": ["Appalled", "Revolted"],
+    "Awful": ["Nauseated", "Detestable"],
+    "Repelled": ["Horrified", "Avoidant"]
+  },
+  "Sad": {
+    "Lonely": ["Isolated", "Abandoned"],
+    "Vulnerable": ["Victimized", "Fragile"],
+    "Despair": ["Powerless", "Grief"],
+    "Guilty": ["Ashamed", "Remorseful"],
+    "Depressed": ["Empty", "Inferior"],
+    "Hurt": ["Disappointed", "Embarrassed"]
+  }
+}

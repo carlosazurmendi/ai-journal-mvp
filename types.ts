@@ -1,10 +1,13 @@
-export type Mood = 'Joy' | 'Sadness' | 'Anger' | 'Fear' | 'Calm';
+
+export type Mood = 'Happy' | 'Sad' | 'Angry' | 'Fearful' | 'Surprised' | 'Bad' | 'Disgusted' | 'Neutral';
 
 export interface JournalEntry {
   id: string;
   date: string;
   content: string;
   mood: Mood;
+  detailedMood?: string;
+  type?: 'text' | 'conversation';
 }
 
 export interface Insight {
@@ -33,6 +36,26 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
   text: string;
+}
+
+export interface ChatThread {
+  id: string;
+  journalEntryId?: string;
+  title: string;
+  messages: ChatMessage[];
+  lastUpdated: string;
+}
+
+export interface TranscriptEntry {
+  id: string;
+  speaker: 'user' | 'aura';
+  text: string;
+}
+
+export interface ConversationHistoryItem {
+    id: string;
+    date: string; // ISO string for sortability
+    transcript: TranscriptEntry[];
 }
 
 export enum View {
