@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { LiveSession, LiveServerMessage, Modality, Blob } from '@google/genai';
+import { LiveServerMessage, Modality, Blob } from '@google/genai';
 import { getAuraAI, summarizeConversationForJournal, getConversationalSystemInstruction } from '../services/geminiService';
 import { Mood, JournalEntry, TranscriptEntry, ConversationHistoryItem } from '../types';
 import { MicIcon, StopIcon, SaveIcon, ClockIcon } from './Icons';
@@ -61,7 +61,7 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
 
-  const sessionPromiseRef = useRef<Promise<LiveSession> | null>(null);
+  const sessionPromiseRef = useRef<Promise<any> | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
@@ -314,6 +314,24 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
     }
   }
 
+  // Safely format history dates to avoid "Invalid Date" when legacy items exist
+  const formatHistoryDate = (dateStr: string) => {
+    try {
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleString();
+      }
+      const numeric = Number(dateStr);
+      if (!isNaN(numeric)) {
+        return new Date(numeric).toLocaleString();
+      }
+    } catch (e) {
+      // Fall through to fallback below
+    }
+    // Fallback to current time to keep UI stable
+    return new Date().toLocaleString();
+  };
+
   return (
     <div className="flex flex-col bg-slate-800/50 rounded-lg p-6 shadow-lg h-full w-full">
       <div className="flex justify-between items-center mb-2 flex-wrap gap-2">
@@ -360,7 +378,7 @@ const ConversationalView: React.FC<ConversationalViewProps> = ({ saveJournalEntr
                                     onClick={() => viewHistoryEntry(entry)}
                                     className="w-full text-left p-3 bg-slate-800 rounded-lg hover:bg-slate-700 transition-colors duration-200"
                                 >
-                                    <p className="font-semibold text-cyan-400">{new Date(entry.date).toLocaleString()}</p>
+                                    <p className="font-semibold text-cyan-400">{formatHistoryDate(entry.date)}</p>
                                     <p className="text-sm text-slate-400 truncate">{entry.transcript.map(t => t.text).join(' ')}</p>
                                 </button>
                             </li>
