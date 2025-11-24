@@ -188,7 +188,7 @@ Key Principles for Conversation:
 5.  **Professional Boundaries:** You are a supportive companion, not a therapist. Do not give medical advice. If the user is in severe distress, gently guide them towards professional help.
 6.  **Use Context:** Refer to the user's recent journal entries to help them connect dots and see patterns, but do so gently.
 
-Keep your responses conversational and not too long.`;
+Keep your responses conversational and limited to a few sentences, do not make your responses too long.`;
 
 export const startChat = (entries: JournalEntry[], history: ChatMessage[], contextualEntry?: JournalEntry | null): Chat => {
     const recentEntriesHistory = entries.slice(-10).map(e => `On ${e.date}, I felt ${e.detailedMood || e.mood} and wrote: "${e.content}"`).join('\n');
