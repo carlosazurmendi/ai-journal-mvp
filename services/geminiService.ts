@@ -4,7 +4,7 @@ import { JournalEntry, Insight, GroundingResult, GroundingSource, GeneratedPromp
 import { emotionData } from "../data/emotionsData";
 
 if (!process.env.API_KEY) {
-  throw new Error("API_KEY environment variable is not set");
+    throw new Error("API_KEY environment variable is not set");
 }
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -24,96 +24,96 @@ const parseGroundingChunks = (chunks: GroundingChunk[] | undefined): GroundingSo
 }
 
 export const generatePrompt = async (entries: JournalEntry[], conversationHistory: ConversationHistoryItem[], currentMood?: { core: Mood; detailed?: string }): Promise<GeneratedPrompt> => {
-  const combinedHistory = [
-    ...entries.map(e => ({ type: 'entry' as const, date: new Date(e.id), content: `On ${e.date}, I felt ${e.detailedMood || e.mood} and wrote: "${e.content}"`})),
-    ...conversationHistory.map(c => ({ type: 'conversation' as const, date: new Date(c.date), content: `On ${new Date(c.date).toLocaleDateString()}, I had a conversation:\n${c.transcript.map(t => `${t.speaker === 'user' ? 'Me' : 'Aura'}: ${t.text}`).join('\n')}`}))
-  ];
+    const combinedHistory = [
+        ...entries.map(e => ({ type: 'entry' as const, date: new Date(e.id), content: `On ${e.date}, I felt ${e.detailedMood || e.mood} and wrote: "${e.content}"` })),
+        ...conversationHistory.map(c => ({ type: 'conversation' as const, date: new Date(c.date), content: `On ${new Date(c.date).toLocaleDateString()}, I had a conversation:\n${c.transcript.map(t => `${t.speaker === 'user' ? 'Me' : 'Aura'}: ${t.text}`).join('\n')}` }))
+    ];
 
-  combinedHistory.sort((a, b) => b.date.getTime() - a.date.getTime());
+    combinedHistory.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-  const history = combinedHistory.slice(0, 5).map(item => item.content).join('\n\n---\n\n');
-  
-  const moodInfo = currentMood ? `I'm currently feeling ${currentMood.detailed || currentMood.core}.` : "I'm not sure how I'm feeling.";
-  
-  const systemInstruction = `You are an insightful, empathetic, and creative journaling assistant. Your goal is to help the user explore their thoughts and feelings constructively.
+    const history = combinedHistory.slice(0, 5).map(item => item.content).join('\n\n---\n\n');
+
+    const moodInfo = currentMood ? `I'm currently feeling ${currentMood.detailed || currentMood.core}.` : "I'm not sure how I'm feeling.";
+
+    const systemInstruction = `You are an insightful, empathetic, and creative journaling assistant. Your goal is to help the user explore their thoughts and feelings constructively.
 - Based on the user's current mood and their previous journal entries and conversations, generate a single, thought-provoking journal prompt.
 - If the user seems stuck (e.g., has few or no entries) or their mood suggests it, provide a simpler, open-ended, low-pressure prompt to help them overcome writer's block.
 - Otherwise, try to base the prompt on Cognitive Behavioral Therapy (CBT) principles.
 - The prompt must be short, encouraging, and end with an open-ended question.
 - Return a JSON object with two keys: 'prompt' (the journal prompt string) and 'explanation' (a brief, clear explanation of the principle behind the prompt, like 'Cognitive Restructuring', 'To get the words flowing', or 'Behavioral Activation').`;
-  
-  const userMessage = `My current mood is: ${moodInfo}.\n\nHere is my recent history of journal entries and conversations:\n${history}\n\nGenerate a new prompt for me.`;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: userMessage,
-      config: {
-        systemInstruction,
-        responseMimeType: 'application/json',
-        responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-                prompt: { type: Type.STRING },
-                explanation: { type: Type.STRING },
-            },
-            required: ['prompt', 'explanation'],
-        },
-      }
-    });
-    const jsonText = response.text.trim();
-    return JSON.parse(jsonText) as GeneratedPrompt;
-  } catch (error) {
-    console.error("Error generating prompt:", error);
-    return {
-        prompt: "Write about what's on your mind today.",
-        explanation: "This is a default prompt for open reflection."
-    };
-  }
+    const userMessage = `My current mood is: ${moodInfo}.\n\nHere is my recent history of journal entries and conversations:\n${history}\n\nGenerate a new prompt for me.`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: userMessage,
+            config: {
+                systemInstruction,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        prompt: { type: Type.STRING },
+                        explanation: { type: Type.STRING },
+                    },
+                    required: ['prompt', 'explanation'],
+                },
+            }
+        });
+        const jsonText = response.text.trim();
+        return JSON.parse(jsonText) as GeneratedPrompt;
+    } catch (error) {
+        console.error("Error generating prompt:", error);
+        return {
+            prompt: "Write about what's on your mind today.",
+            explanation: "This is a default prompt for open reflection."
+        };
+    }
 };
 
 export const generateInsights = async (entries: JournalEntry[], conversationHistory: ConversationHistoryItem[]): Promise<Insight[]> => {
-  if (entries.length === 0 && conversationHistory.length === 0) return [];
-  
-  const combinedHistory = [
-    ...entries.map(e => ({ type: 'entry' as const, date: new Date(e.id), content: `Date: ${e.date}\nMood: ${e.detailedMood || e.mood}\nEntry: ${e.content}`})),
-    ...conversationHistory.map(c => ({ type: 'conversation' as const, date: new Date(c.date), content: `On ${new Date(c.date).toLocaleDateString()}, I had a conversation with Aura:\n${c.transcript.map(t => `${t.speaker === 'user' ? 'Me' : 'Aura'}: ${t.text}`).join('\n')}`}))
-  ];
+    if (entries.length === 0 && conversationHistory.length === 0) return [];
 
-  combinedHistory.sort((a, b) => a.date.getTime() - b.date.getTime());
+    const combinedHistory = [
+        ...entries.map(e => ({ type: 'entry' as const, date: new Date(e.id), content: `Date: ${e.date}\nMood: ${e.detailedMood || e.mood}\nEntry: ${e.content}` })),
+        ...conversationHistory.map(c => ({ type: 'conversation' as const, date: new Date(c.date), content: `On ${new Date(c.date).toLocaleDateString()}, I had a conversation with Aura:\n${c.transcript.map(t => `${t.speaker === 'user' ? 'Me' : 'Aura'}: ${t.text}`).join('\n')}` }))
+    ];
 
-  const history = combinedHistory.map(item => item.content).join('\n\n---\n\n');
+    combinedHistory.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  try {
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
-        contents: `Analyze my journal entries, conversations, and their associated moods. Provide 2-3 key insights based on Cognitive Behavioral Therapy principles and emotional patterns you observe. Reference Plutchik's Wheel of Emotions to discuss how primary emotions might be combining or leading to more complex feelings. For each insight, provide a title, a brief explanation, and a constructive suggestion. Here are my entries and conversations:\n\n${history}`,
-        config: {
-            responseMimeType: 'application/json',
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        id: { type: Type.STRING },
-                        title: { type: Type.STRING },
-                        explanation: { type: Type.STRING },
-                        suggestion: { type: Type.STRING },
+    const history = combinedHistory.map(item => item.content).join('\n\n---\n\n');
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: `Analyze my journal entries, conversations, and their associated moods. Provide 2-3 key insights based on Cognitive Behavioral Therapy principles and emotional patterns you observe. Reference Plutchik's Wheel of Emotions to discuss how primary emotions might be combining or leading to more complex feelings. For each insight, provide a title, a brief explanation, and a constructive suggestion. Here are my entries and conversations:\n\n${history}`,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            id: { type: Type.STRING },
+                            title: { type: Type.STRING },
+                            explanation: { type: Type.STRING },
+                            suggestion: { type: Type.STRING },
+                        },
+                        required: ['id', 'title', 'explanation', 'suggestion'],
                     },
-                    required: ['id', 'title', 'explanation', 'suggestion'],
                 },
+                thinkingConfig: { thinkingBudget: 32768 },
             },
-            thinkingConfig: { thinkingBudget: 32768 },
-        },
-    });
-    
-    const jsonText = response.text.trim();
-    const insights = JSON.parse(jsonText) as Insight[];
-    return insights.map(insight => ({ ...insight, id: `insight-${Date.now()}-${Math.random()}` }));
-  } catch (error) {
-      console.error("Error generating insights:", error);
-      return [];
-  }
+        });
+
+        const jsonText = response.text.trim();
+        const insights = JSON.parse(jsonText) as Insight[];
+        return insights.map(insight => ({ ...insight, id: `insight-${Date.now()}-${Math.random()}` }));
+    } catch (error) {
+        console.error("Error generating insights:", error);
+        return [];
+    }
 };
 
 export const analyzeImage = async (prompt: string, imageBase64: string, mimeType: string): Promise<string> => {
@@ -121,7 +121,7 @@ export const analyzeImage = async (prompt: string, imageBase64: string, mimeType
         inlineData: { data: imageBase64, mimeType },
     };
     const textPart = { text: prompt };
-    
+
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
@@ -192,7 +192,7 @@ Keep your responses conversational and limited to a few sentences, do not make y
 
 export const startChat = (entries: JournalEntry[], history: ChatMessage[], contextualEntry?: JournalEntry | null): Chat => {
     const recentEntriesHistory = entries.slice(-10).map(e => `On ${e.date}, I felt ${e.detailedMood || e.mood} and wrote: "${e.content}"`).join('\n');
-    
+
     let systemInstruction: string;
     if (contextualEntry) {
         systemInstruction = `${AURA_CHAT_PERSONA}
@@ -217,7 +217,7 @@ ${recentEntriesHistory}`;
 CONTEXT from recent journal entries:
 ${recentEntriesHistory}`;
     }
-    
+
     const geminiHistory: Content[] = history.map(msg => ({
         role: msg.role,
         parts: [{ text: msg.text }]
@@ -232,34 +232,34 @@ ${recentEntriesHistory}`;
 
 export const generateChatSuggestions = async (entries: JournalEntry[]): Promise<string[]> => {
     if (entries.length === 0) return [];
-  
+
     const history = entries.slice(-3).map(e => `Date: ${e.date}, Mood: ${e.detailedMood || e.mood}, Entry: "${e.content}"`).join('\n');
-  
+
     const systemInstruction = `You are an insightful AI assistant. Based on the user's recent journal entries, generate 2 or 3 concise, gentle, and open-ended conversation starter questions. These questions should help the user explore their feelings or situations further. Return a JSON array of strings.`;
-  
+
     try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: `Here are my recent journal entries:\n${history}\n\nGenerate conversation starters.`,
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.ARRAY,
-            items: { type: Type.STRING },
-          },
-        },
-      });
-      const jsonText = response.text.trim();
-      return JSON.parse(jsonText) as string[];
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: `Here are my recent journal entries:\n${history}\n\nGenerate conversation starters.`,
+            config: {
+                systemInstruction,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING },
+                },
+            },
+        });
+        const jsonText = response.text.trim();
+        return JSON.parse(jsonText) as string[];
     } catch (error) {
-      console.error("Error generating chat suggestions:", error);
-      return [
-          "What's been on your mind lately?",
-          "Is there anything from your recent entries you'd like to explore more?",
-      ];
+        console.error("Error generating chat suggestions:", error);
+        return [
+            "What's been on your mind lately?",
+            "Is there anything from your recent entries you'd like to explore more?",
+        ];
     }
-  };
+};
 
 export const generateSpeech = async (text: string): Promise<string | null> => {
     try {
@@ -333,7 +333,7 @@ Your task is to provide the *second* turn by responding empathetically and direc
 User's first message:
 "${contextualEntry.content}"`;
     }
-    
+
     return AURA_CONVERSATIONAL_PERSONA;
 }
 
